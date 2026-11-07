@@ -1,0 +1,112 @@
+# Combined config for the SPL assignment: Telugu (IndicTTS) FastSpeech 2.
+# Sections mirror the stock preprocess.yaml / model.yaml / train.yaml so the
+# adapted train.py / preprocess.py / inference.py can split them apart.
+
+preprocess:
+  dataset: "IndicTTS_Telugu"
+
+  path:
+    # corpus_path is unused: data comes from HuggingFace via
+    # scripts/make_filelists.py, which writes wav/.lab files here.
+    corpus_path: ""
+    raw_path: "./raw_data/IndicTTS_Telugu"
+    preprocessed_path: "./preprocessed_data/IndicTTS_Telugu"
+    # Telugu G2P lexicon built by scripts/build_te_lexicon.py
+    # (MFA-format: "word<TAB>phone1 phone2 ..."); used for forced alignment
+    # and, in phone mode, by inference.py.
+    lexicon_path: "lexicon/telugu-lexicon.txt"
+
+  preprocessing:
+    val_size: 250
+    text:
+      # CHANGED (SPL assignment): custom cleaner that PRESERVES Telugu Unicode
+      # (no unidecode/lowercasing). Number/time expansion is done beforehand
+      # by scripts/text_normalize_te.py.
+      text_cleaners: ["telugu_cleaners"]
+      language: "te"
+    audio:
+      sampling_rate: 22050
+      max_wav_value: 32768.0
+    stft:
+      filter_length: 1024
+      hop_length: 256
+      win_length: 1024
+    mel:
+      n_mel_channels: 80
+      mel_fmin: 0
+      mel_fmax: 8000 # must be 8000 for the HiFi-GAN universal vocoder
+    pitch:
+      feature: "phoneme_level"
+      normalization: true
+    energy:
+      feature: "phoneme_level"
+      normalization: true
+
+model:
+  transformer:
+    encoder_layer: 4
+    encoder_head: 2
+    encoder_hidden: 256
+    decoder_layer: 6
+    decoder_head: 2
+    decoder_hidden: 256
+    conv_filter_size: 1024
+    conv_kernel_size: [9, 1]
+    encoder_dropout: 0.2
+    decoder_dropout: 0.2
+
+  variance_predictor:
+    filter_size: 256
+    kernel_size: 3
+    dropout: 0.5
+
+  variance_embedding:
+    pitch_quantization: "linear"
+    energy_quantization: "linear"
+    n_bins: 256
+
+  # CHANGED (SPL assignment): IndicTTS Telugu has 2 speakers (male ~4.47h,
+  # female ~4.27h), so a single-speaker model is impossible. Multi-speaker
+  # training with a learned speaker embedding; speaker IDs come from
+  # preprocessed_data/IndicTTS_Telugu/speakers.json.
+  multi_speaker: false
+
+  max_seq_len: 1000
+
+  vocoder:
+    model: "HiFi-GAN"
+    speaker: "universal"
+    # CHANGED (SPL assignment): vendored weights live in the repo-root hifigan/
+    # directory (utils/model.py resolves this with fallbacks).
+    weights_path: "../../hifigan/generator_universal.pth.tar"
+
+  # CHANGED (SPL assignment): Telugu modeling mode.
+  # "phone" = espeak-ng IPA phones via lexicon/telugu-lexicon.txt (needs the
+  # phone inventory in text/symbols.py); "char" = raw Telugu graphemes.
+  # Must match the mode used in scripts/build_te_lexicon.py and inference.py.
+  telugu_g2p: "phone"
+
+train:
+  path:
+    ckpt_path: "./output/ckpt/IndicTTS_Telugu"
+    log_path: "./output/log/IndicTTS_Telugu"
+    result_path: "./output/result/IndicTTS_Telugu"
+  optimizer:
+    batch_size: 16
+    betas: [0.9, 0.98]
+    eps: 0.000000001
+    weight_decay: 0.0
+    grad_clip_thresh: 1.0
+    grad_acc_step: 1
+    warm_up_step: 4000
+    anneal_steps: [300000, 400000, 500000]
+    anneal_rate: 0.3
+  step:
+    # Practical target on free GPUs (Kaggle P100 / Colab T4, batch 16):
+    # ~100k-130k steps for intelligible speech (~12h). 200000 is the ceiling;
+    # stop early with --restore_step resume if the deadline forces it.
+    total_step: 200000
+    log_step: 100
+    synth_step: 1000
+    val_step: 1000
+    save_step: 10000

@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Pipeline working directories (regenerated; too large for git)
+output/
+raw_data/
+preprocessed_data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Checkpoints and large weights are committed via Git LFS, NOT ignored.
+# See .gitattributes. If a checkpoint exceeds GitHub's limits even with LFS,
+# put it on Drive and link it from README.md (assignment allows this).
+
+# Training datasets
+English/parquet/
+Telugu/parquet/
+English/raw_data/
+Telugu/raw_data/
+English/preprocessed_data/
+Telugu/preprocessed_data/
+
+# Model checkpoints and generated files
+**/checkpoints/
+*.wav
+*.flac
+*.mp3
+*.npy
+*.npz
+*.pt
+*.pth
+*.ckpt
+*.tar.gz
+
+# Temporary files
+**/__pycache__/
+*.pyc
+*.log
