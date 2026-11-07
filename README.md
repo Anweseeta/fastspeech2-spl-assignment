@@ -1,176 +1,273 @@
-# FastSpeech 2 TTS — English & Telugu (IIIT-H SPL evaluation assignment)
+# FastSpeech 2 TTS — English & Telugu
 
-Implements [FastSpeech 2](https://arxiv.org/abs/2006.04558) (from
-[ming024/FastSpeech2](https://github.com/ming024/FastSpeech2)) separately for
-**English** (AI4Bharat Svarah) and **Telugu** (IndicTTS Telugu), with test
-synthesis, variance-adaptor analysis plots, and a technical report.
+## IIIT Hyderabad Speech Processing Lab — Evaluation Assignment
 
-> **Honest-framing note (read first).** The assignment's "~5h train + ~1h val
-> per language" implies single-speaker data, but neither dataset supports
-> that: Svarah is ~9.6h across **117 speakers** (~5 min each) and IndicTTS
-> Telugu is ~8.7h across **2 speakers**. Both models therefore train
-> **multi-speaker with learned speaker embeddings** (`multi_speaker: true`),
-> keeping the 5h/1h budget as the data-volume target. The selection
-> (`data_selection.md`), configs, report and this README all state this
-> explicitly. The full list of code changes vs the reference is in
-> [`docs/CHANGES.md`](docs/CHANGES.md).
+Implements **FastSpeech 2** (Ren et al., 2020) for text-to-speech in two languages:
 
-## Repo layout
+- **English:** AI4Bharat Svarah
+- **Telugu:** SPRINGLab IndicTTS_Telugu
 
+Vocoder: vendored HiFi-GAN Universal.
+
+**Repository:** https://github.com/Anweseeta/fastspeech2-spl-assignment  
+**Technical report:** `docs/Technical_Report_DRAFT.md`  
+**Candidate:** Anweseeta Sahoo
+
+---
+
+## Status (as of 2026-11-07)
+
+| Stage | English | Telugu |
+|---|---|---|
+| Data selection | Done — 3462 train, 692 validation (5.01h / 1.02h) | Done — 845 train, 169 validation (4.88h / 1.11h) |
+| Forced alignment (MFA) | Done — 4119 TextGrids out of 4154 | Blocked — see explanation below |
+| Preprocessing | Done — 2 speakers, statistics computed | Not run — blocked on alignment |
+| Training | Pending (GPU) | Pending |
+| Test audio and plots | Pending | Pending |
+
+### Telugu alignment limitation
+
+Telugu alignment is blocked. There is no pretrained Telugu MFA acoustic model, so one had to be trained using `mfa train`.
+
+Training hung at `sat_3`, iteration 26 of 35, across three attempts (Colab, laptop, and a resumed run on a cooled laptop). No model was saved and no TextGrids were exported.
+
+Telugu is therefore submitted as pipeline-complete at the code and configuration level, with filelists and lexicon prepared. The alignment limitation is documented honestly in the technical report.
+
+### Training status
+
+Training had not started by the submission deadline (0 steps). English preprocessing finished shortly before the deadline, leaving insufficient time for a GPU training run.
+
+Training and evaluation can continue after submission. Any subsequent results will be documented with their actual dates.
+
+---
+
+## Datasets
+
+### English — `ai4bharat/Svarah` (gated)
+
+- The available split is `test` (3 Parquet files, approximately 1.1 GB).
+- Measured pool: 6656 utterances, 9.61 hours total.
+- The Parquet data has no per-speaker ID. The `gender` field was therefore used as the speaker ID, producing two speaker categories (male/female), rather than 117 speakers.
+- Selection: per-speaker seeded shuffle (seed 42), 5:1 train/validation split, with disjoint IDs.
+- Alignment: `mfa align` using the pretrained `english_us_arpa` acoustic model and LibriSpeech lexicon (206,508 entries).
+- 4119 TextGrids were exported out of 4154 utterances. The remaining 35 were dropped.
+
+### Telugu — `SPRINGLab/IndicTTS_Telugu`
+
+- Measured audio: 16 kHz mono, 36.71 hours across 2 speakers.
+- Telugu uses speaker 0 (23.92 hours) with `multi_speaker: false`.
+- Lexicon: 12,707 entries and 47 phones, generated using `scripts/build_te_lexicon.py --mode phone` with espeak-ng G2P.
+- Text normalization: `scripts/text_normalize_te.py` (digits, times and ordinals converted into words).
+- Telugu alignment remains blocked as described above.
+
+---
+
+## Pipeline
+
+```text
+Data selection
+      ↓
+Text normalization
+      ↓
+Forced alignment (MFA)
+      ↓
+Preprocessing (mel / pitch / energy / duration)
+      ↓
+Training
+      ↓
+Inference
+      ↓
+Variance-adaptor plots and evaluation
 ```
-English/                  # English model: train.py, preprocess.py, inference.py,
-                          # config.yaml, test_sentences_en.txt, checkpoints/
-Telugu/                   # Telugu model: same + Telugu text support
-scripts/                  # make_filelists.py, text_normalize_{te,en}.py,
-                          # build_te_lexicon.py, plot_variance.py, plot_losses.py
-hifigan/                  # vendored HiFi-GAN UNIVERSAL vocoder weights
-Results/{English,Telugu}/ # loss plots, test_generated_audios/, variance_adaptor_plots/
-docs/                     # CHANGES.md, Technical_Report_Outline.md
-data_selection.md         # filled by make_filelists.py (seed, hours, per-speaker table)
-requirements.txt  .gitignore  .gitattributes (Git LFS for *.pth.tar)
+
+### Acoustic configuration
+
+- Sampling rate: 22050 Hz
+- Hop length: 256
+- Mel channels: 80
+- Maximum frequency: 8000 Hz
+
+### Training configuration
+
+- Batch size: 16
+- Adam betas: [0.9, 0.98]
+- Epsilon: 1e-9
+- Gradient clipping: 1.0
+- Warm-up: 4000 steps
+- Checkpoint saving interval: 10000 steps
+
+---
+
+## Repository layout
+
+```text
+fastspeech2-spl-assignment/
+│
+├── English/
+│   ├── train.py
+│   ├── preprocess.py
+│   ├── inference.py
+│   ├── config.yaml
+│   └── test_sentences_en.txt
+│
+├── Telugu/
+│   ├── train.py
+│   ├── preprocess.py
+│   ├── inference.py
+│   ├── config.yaml
+│   └── test_sentences_te.txt
+│
+├── scripts/
+│   ├── make_filelists*.py
+│   ├── text_normalize_en.py
+│   ├── text_normalize_te.py
+│   ├── build_te_lexicon.py
+│   ├── plot_variance.py
+│   └── plot_losses.py
+│
+├── hifigan/
+│   └── generator_universal.pth.tar
+│
+├── Results/
+│   ├── English/
+│   └── Telugu/
+│
+├── docs/
+│   ├── CHANGES.md
+│   ├── Technical_Report_DRAFT.md
+│   └── Technical_Report_Outline.md
+│
+├── data_selection.md
+├── requirements.txt
+├── .gitignore
+└── .gitattributes
 ```
 
-Run every command from the **repo root** unless it says `cd English/` /
-`cd Telugu/` (the language scripts expect to run from inside their dir).
+Raw audio, Parquet files and preprocessed features are not included in this repository because of their size. They are backed up separately. The filelists and `data_selection.md` record the selected utterances.
 
-## 0. Setup (Kaggle / Colab GPU)
+---
+
+## Reproduction
+
+### Install dependencies
 
 ```bash
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+
 pip install -r requirements.txt
-sudo apt-get install -y espeak-ng build-essential   # Telugu G2P + pyworld build
-# Montreal Forced Aligner (needs conda):
+
+sudo apt-get install -y espeak-ng build-essential
+```
+
+Install Montreal Forced Aligner using Conda:
+
+```bash
 conda install -c conda-forge montreal-forced-aligner
 ```
 
-- HuggingFace: create an account, **accept the terms** on
-  `ai4bharat/Svarah` (gated), create a read token → `export HF_TOKEN=...`
-- **Kaggle**: enable GPU (P100), add `HF_TOKEN` as a secret, phone-verify the
-  account. **Colab**: free T4, `!pip install` the same requirements.
-- Strategy used for this deadline: **English on Kaggle P100, Telugu on Colab
-  T4 in parallel** (~12h each for ~100–130k steps at batch 16 — the practical
-  target; `total_step: 200000` in the configs is the ceiling).
+### Data selection
 
-### Session-wall survival
-- Checkpoints save every 10k steps to `<Lang>/output/ckpt/<Ds>/`.
-- **Kaggle**: after each session, "Save Version" / upload `output/ckpt` as a
-  Kaggle dataset, or `cp -r` to `/kaggle/working` and persist. Resume with
-  `python train.py --config config.yaml --restore_step <LAST_STEP>`.
-- **Colab**: mount Drive and symlink: `ln -s /content/drive/MyDrive/fs2/ckpt
-  English/output/ckpt`, same for `output/log`.
-- Never let a disconnect lose more than one `save_step` of work.
-
-## 1. Data — download + seeded selection (~5h train / ~1h val per language)
+English requires a Hugging Face token because Svarah is gated.
 
 ```bash
-export HF_TOKEN=...   # needed for gated Svarah
-python scripts/make_filelists.py --lang en --hf_token $HF_TOKEN
-python scripts/make_filelists.py --lang te
+export HF_TOKEN=<your-token>
+
+python scripts/make_filelists_local_en.py
+
+python scripts/make_filelists_local.py --lang te
 ```
 
-This streams both HF datasets, resamples to 22050 Hz mono int16, cleans the
-transcripts (English: `english_cleaners`; Telugu: `text_normalize_te.py`),
-and writes `English/raw_data/Svarah/<speaker>/<uttid>.wav` + `.lab` (same for
-Telugu). Selection: per-speaker seeded shuffle (seed 42), fixed fraction per
-speaker to hit the hour targets, 5:1 train:val; train/val IDs are asserted
-disjoint. Results + per-speaker table go to `data_selection.md`.
+### Forced alignment
 
-## 2. Forced alignment — phoneme durations (MFA)
-
-The preprocessor needs `<preprocessed_path>/TextGrid/<speaker>/<uttid>.TextGrid`
-with a tier named **phones**.
-
-**English** (pretrained `english_us_arpa` acoustic model + dictionary):
-```bash
-mfa model download acoustic english_us_arpa
-mfa model download dictionary english_us_arpa
-# add OOV words from your .lab vocab first if MFA reports missing words:
-#   mfa g2p --model english_us_arpa <oov.txt> >> <custom.dict>
-mfa align English/raw_data/Svarah <your-english.dict> english_us_arpa \
-    English/preprocessed_data/Svarah/TextGrid --clean --overwrite --num_jobs 4
-```
-
-**Telugu** (no pretrained MFA model exists → train one on your data):
-```bash
-python scripts/build_te_lexicon.py --mode phone   # espeak-ng G2P -> Telugu/lexicon/telugu-lexicon.txt
-#   (--mode char for the grapheme-level fallback; must match model.telugu_g2p in Telugu/config.yaml)
-mfa train_and_align Telugu/raw_data/IndicTTS_Telugu \
-    Telugu/lexicon/telugu-lexicon.txt \
-    Telugu/preprocessed_data/IndicTTS_Telugu/TextGrid --clean --overwrite --num_jobs 4
-```
-`build_te_lexicon.py` also verifies every phone exists in
-`Telugu/text/symbols.py` (unknown symbols are silently dropped by
-`text_to_sequence` — the script fails loudly instead).
-
-## 3. Preprocess — mel / pitch / energy / duration features
+English alignment:
 
 ```bash
-cd English && python preprocess.py --config config.yaml && cd ..
-cd Telugu  && python preprocess.py --config config.yaml && cd ..
+mfa align English/raw_data/Svarah \
+English/lexicon/librispeech-lexicon.txt \
+english_us_arpa \
+English/preprocessed_data/Svarah/TextGrid
 ```
-Writes `preprocessed_data/<Ds>/{mel,pitch,energy,duration,train.txt,val.txt,
-speakers.json,stats.json}`. Check `speakers.json` for the exact speaker names
-(needed for inference `--speaker`).
 
-## 4. Train
+Telugu alignment requires training a suitable acoustic model first. See the technical report for the documented limitation.
+
+### Preprocessing
 
 ```bash
-cd English && python train.py --config config.yaml && cd ..
-cd Telugu  && python train.py --config config.yaml && cd ..
-# resume after a disconnect:
-cd English && python train.py --config config.yaml --restore_step 60000 && cd ..
+cd English
+python preprocess.py --config config.yaml
+cd ..
 ```
-Watch TensorBoard: `tensorboard --logdir English/output/log/Svarah`.
-Practical target: **~100k–130k steps** for intelligible speech on this data
-budget; stop early if the deadline forces it and say so in the report.
 
-## 5. Synthesize the test sentences + dump variance-adaptor predictions
+### Training (GPU)
 
 ```bash
-cd English && python inference.py --config config.yaml --restore_step 120000 \
-    --speaker <speaker_name_from_speakers.json> && cd ..
-cd Telugu && python inference.py --config config.yaml --restore_step 120000 \
-    --speaker <speaker_name_from_speakers.json> [--g2p phone] && cd ..
+cd English
+python train.py --config config.yaml
+cd ..
 ```
-- wavs → `Results/English/test_generated_audios/{E1,E2a,E2b,E3,E4}.wav`
-  (Telugu: `T1..T4`)
-- variance-adaptor dumps (per-phone duration / denormalized pitch Hz /
-  energy + phone labels) → `<Lang>/output/va/<Ds>/{ID}.npz`
-- Telugu `--g2p` must match `model.telugu_g2p` in `Telugu/config.yaml` and
-  the lexicon mode, or train/inference symbol sequences won't line up.
 
-## 6. Plots
+Resume training after interruption using:
 
 ```bash
-python scripts/plot_losses.py --lang en && python scripts/plot_losses.py --lang te
-# -> Results/{English,Telugu}/{training_loss.png,validation_loss.png}
-python scripts/plot_variance.py --lang en && python scripts/plot_variance.py --lang te
-# -> Results/{English,Telugu}/variance_adaptor_plots/{duration,pitch,energy}/{ID}.png
+python train.py --config config.yaml --restore_step <LAST_STEP>
 ```
 
-## 7. Technical report
+### Inference
 
-Fill in [`docs/Technical_Report_Outline.md`](docs/Technical_Report_Outline.md)
-(section-by-section, matching the assignment's required contents), export to
-**`Technical_Report.pdf`** at the repo root. Every training claim must cite a
-figure/table in this repo — no invented numbers.
+```bash
+cd English
 
-## 8. Submit
+python inference.py --config config.yaml --restore_step <STEP> \
+--speaker <speaker_name_from_speakers.json>
 
-1. `git lfs install`, commit everything (checkpoints via LFS), push to a
-   **public** GitHub repo. If a checkpoint still exceeds limits, upload it to
-   Drive and link it from here (the assignment allows an external link — keep
-   it accessible during evaluation).
-2. Submit the repo URL in the assignment's Google Form
-   (https://forms.gle/7tgHgKJLjpBXwcBj6) before **2026-11-07 00:00**.
+cd ..
+```
 
-## Troubleshooting
-- `espeak-ng` missing → `build_te_lexicon.py --mode phone` and Telugu
-  phone-mode inference fall back per-word (see script output); install it.
-- MFA OOV words → extend the dictionary, re-run with `--overwrite`.
-- Empty phone sequence at inference → a phone is missing from
-  `Telugu/text/symbols.py::_telugu_phones_ipa`; add it (see `docs/CHANGES.md`).
-- CUDA OOM → lower `optimizer.batch_size` in `config.yaml` (16 fits a
-  P100/T4 at these dims).
-- `phonemizer` Separator API differs by version → `build_te_lexicon.py`
-  prints samples; verify phones look like IPA before the full run.
+### Plotting
+
+```bash
+python scripts/plot_losses.py --lang en
+
+python scripts/plot_variance.py --lang en
+```
+
+Full command sequences and laptop-specific fixes (setuptools downgrade, librosa keyword-only calls and device-aware STFT for CPU-only PyTorch) are documented in `docs/CHANGES.md` and the technical report.
+
+---
+
+## Results
+
+At submission:
+
+- English: aligned and preprocessed.
+- Telugu: pipeline code, filelists and lexicon prepared; alignment blocked.
+- Training: not started (0 steps).
+- Generated audio: pending.
+- Loss curves: pending.
+
+Test sentences are available in:
+
+- `English/test_sentences_en.txt`
+- `Telugu/test_sentences_te.txt`
+
+Generated audios, loss plots and variance-adaptor plots will be placed in `Results/` as training and evaluation progress.
+
+---
+
+## Limitations
+
+1. English has only two speaker embeddings based on gender because Svarah's Parquet data does not contain a per-speaker ID.
+2. 35 out of 4154 English utterances failed alignment and were dropped.
+3. Telugu MFA alignment did not complete after three attempts.
+4. Telugu preprocessing and training could not start because alignment was blocked.
+5. Training had not started by the submission deadline (0 steps). Therefore, speech quality claims await actual training and evaluation.
+
+---
+
+## Base implementation
+
+FastSpeech 2 (Ren et al., 2020), paper: https://arxiv.org/abs/2006.04558
+
+Original implementation: https://github.com/ming024/FastSpeech2
+
+Modifications compared with the original implementation are listed in `docs/CHANGES.md`.
